@@ -54,78 +54,60 @@ var array = {
     }
 };
 
-var eventHub = { };
-
-eventHub.events = array.ofTuples(2);
-eventHub.send = (type, event) => {
-    eventHub.events.push(type, event);
+var hub = {
+    events: array.ofTuples(2),
+    yields: array.ofTuples(2),
+    listeners: array.ofTuples(3)
 };
 
-eventHub.yields = array.ofTuples(2);
-eventHub.yield = (type, event) => {
-    eventHub.yields.push(type, event);
-};
-
-eventHub.listeners = array.ofTuples(3);
-eventHub.once = (type, callback, ...args) => {
-    var index;
-    if ((index = eventHub.listeners.indexOf(type)) < 0) index = eventHub.listeners.push(type, [[], []]) - 1;
-    var row = eventHub.listeners.get(index);
-    var cbs = row[1];
-    cbs[0].push(callback);
-};
-
-eventHub.on = (type, cb) => {
-    eventHub.once(type, function _(e) {
-        eventHub.once(type, _);
-        cb(e);
-    });
-};
-
-eventHub.run = () => {
-    var pair, listener;
-    while((pair = eventHub.events.shift()) !== void 0 || (pair = eventHub.yields.shift()) !== void 0 ) {
-        var et = pair[0], e = pair[1];
-        
+var Hub = {
+    send: (type, event, hub) => hub.events.push(type, event),
+    yield: (type, event, hub) => hub.yields.push(type, event),
+    once: (type, cb, hub) => {
         var index;
-        if ((index = eventHub.listeners.indexOf(et)) > -1) {
-            var row = eventHub.listeners.get(index);
-            var cbs = row[1];
-            array.swap(cbs);
-            while((listener = cbs[1].shift()) !== void 0)
-                listener(e);
+        if ((index = hub.listeners.indexOf(type)) < 0) index = hub.listeners.push(type, [[], []]) - 1;
+        var row = hub.listeners.get(index);
+        var cbs = row[1];
+        cbs[0].push(cb);
+    },
+    on: (type, cb, hub) => {
+        Hub.once(type, function _(e) {
+            Hub.once(type, _, hub);
+            cb(e);
+        }, hub);
+    },
+    flush: (hub) => {
+        var pair, listener;
+        while((pair = hub.events.shift()) !== void 0 || (pair = hub.yields.shift()) !== void 0 ) {
+            var et = pair[0], e = pair[1];
+
+            var index;
+            if ((index = hub.listeners.indexOf(et)) > -1) {
+                var row = hub.listeners.get(index);
+                var cbs = row[1];
+                array.swap(cbs);
+                while((listener = cbs[1].shift()) !== void 0)
+                    listener(e);
+            }
         }
     }
 };
 
-//setTimeout(function _() { setTimeout(_); q.run(); });
-
-eventHub.yield('_', () => console.log('yield 1'));
-eventHub.yield('_', () =>
-    eventHub.yield('_', () => console.log('yield 2')));
-
-eventHub.once('_', function _(a) { a(); eventHub.once('_', _); });
-
 requestAnimationFrame(function _(e) {
-    requestAnimationFrame(_);    
-    eventHub.run();
+    requestAnimationFrame(_);
+    Hub.send('raf', e, hub); 
+    Hub.flush(hub);
 });
 
-requestAnimationFrame(function _(e) {
-    requestAnimationFrame(_);    
-    eventHub.send('raf', e);
-});
-
-eventHub.once('raf', function _(e) {
-    //q.once('raf', _);
+Hub.once('raf', function _(e) {
     console.log('raf', e);
-});
+}, hub);
 
-var map = (from, to, map) => (q) => {
-    q.on(from, function _(e) {
+var map = (from, to, map) => (hub) => {
+    Hub.on(from, function _(e) {
         var r = map(e);
-        q.send(to, r);
-    });
+        Hub.send(to, r, hub);
+    }, hub);
 };
 
 var time = {
@@ -139,27 +121,27 @@ map('raf', 'time', elapsed => {
     time.current = elapsed;
     time.delta = time.current - time.previous;
     return time;
-})(eventHub);
+})(hub);
 
-map('time', 'delta', time => time.delta)(eventHub);
+map('time', 'delta', time => time.delta)(hub);
 
-var delay = (ms) => (q, et) => {
+var delay = (ms) => (hub, et) => {
     var elapsed = 0;
-    q.once('delta', function _(delta) {
+    Hub.once('delta', function _(delta) {
         elapsed += delta;
         if (elapsed >= ms) {
-            q.send(et, null);
+            Hub.send(et, null, hub);
 
-            q.yield('delta', elapsed - ms);
+            Hub.yield('delta', elapsed - ms, hub);
         }
         else {
-            q.once('delta', _);
+            Hub.once('delta', _, hub);
         }
-    });
+    }, hub);
 };
 
-var fromCb = (sub) => (q, et) => {
-    sub(e => { q.send(et, e); });
+var fromCb = (sub) => (hub, et) => {
+    sub(e => { Hub.send(et, e, hub); });
 };
 
 var windowOnload = fromCb(cb => window.onload = cb);
@@ -167,14 +149,14 @@ var windowOnload = fromCb(cb => window.onload = cb);
 var one = delay(2000);
 var two = delay(2000);
 
-var then = (one, two) => (q, et) => {
-    one(q, 't');
-    q.once('t', _ => two(q, et));
+var then = (one, two) => (hub, et) => {
+    one(hub, 't');
+    Hub.once('t', _ => two(hub, et), hub);
 };
 
-then(windowOnload, then(one, two))(eventHub, 'window1+2');
+then(windowOnload, then(one, two))(hub, 'window1+2');
 
-eventHub.once('window1+2', () => console.log('window 1 + 2'));
+Hub.once('window1+2', () => console.log('window 1 + 2'), hub);
 
 // hierarchy id
 var hid = {
