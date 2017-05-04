@@ -65,10 +65,10 @@ var Hub = {
     yield: (type, event, hub) => hub.yields.push(type, event),
     once: (type, cb, hub) => {
         var index;
-        if ((index = hub.listeners.indexOf(type)) < 0) index = hub.listeners.push(type, [[], []]) - 1;
+        if ((index = hub.listeners.indexOf(type)) < 0) index = hub.listeners.push(type, []) - 1;
         var row = hub.listeners.get(index);
         var cbs = row[1];
-        cbs[0].push(cb);
+        cbs.push(cb);
     },
     on: (type, cb, hub) => {
         Hub.once(type, function _(e) {
@@ -77,16 +77,18 @@ var Hub = {
         }, hub);
     },
     flush: (hub) => {
-        var pair, listener;
+        var pair;
         while((pair = hub.events.shift()) !== void 0 || (pair = hub.yields.shift()) !== void 0 ) {
-            var et = pair[0], e = pair[1];
+            var [et, e] = pair;
 
             var index;
             if ((index = hub.listeners.indexOf(et)) > -1) {
-                var row = hub.listeners.get(index);
-                var cbs = row[1];
-                array.swap(cbs);
-                while((listener = cbs[1].shift()) !== void 0)
+                var [_, cbs] = hub.listeners.get(index);
+
+                var count = cbs.length;
+
+                var listener;
+                while(count-- > 0 && (listener = cbs.shift()) !== void 0)
                     listener(e);
             }
         }
@@ -95,7 +97,7 @@ var Hub = {
 
 requestAnimationFrame(function _(e) {
     requestAnimationFrame(_);
-    Hub.send('raf', e, hub); 
+    Hub.send('raf', e, hub);
     Hub.flush(hub);
 });
 
