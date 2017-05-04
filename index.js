@@ -55,14 +55,18 @@ var array = {
 };
 
 var hub = {
-    events: array.ofTuples(2),
+    events: array.ofTuples(3),
     yields: array.ofTuples(2),
     listeners: array.ofTuples(3)
 };
 
+var exceptEt = ['raf', 'time', 'delta'];
 var Hub = {
-    send: (type, event, hub) => hub.events.push(type, event),
-    yield: (type, event, hub) => hub.yields.push(type, event),
+    send: (type, event, hid, hub) => {
+        if (exceptEt.indexOf(type) === -1) console.log(hid, type, event);
+        hub.events.push(type, event, hid);
+    },
+    yield: (type, event, hid, hub) => hub.yields.push(type, event, hid),
     once: (type, cb, hub) => {
         var index;
         if ((index = hub.listeners.indexOf(type)) < 0) index = hub.listeners.push(type, []) - 1;
@@ -71,15 +75,15 @@ var Hub = {
         cbs.push(cb);
     },
     on: (type, cb, hub) => {
-        Hub.once(type, function _(e) {
+        Hub.once(type, function _(...args) {
             Hub.once(type, _, hub);
-            cb(e);
+            cb(...args);
         }, hub);
     },
     flush: (hub) => {
         var pair;
         while((pair = hub.events.shift()) !== void 0 || (pair = hub.yields.shift()) !== void 0 ) {
-            var [et, e] = pair;
+            var [et, e, hid] = pair;
 
             var index;
             if ((index = hub.listeners.indexOf(et)) > -1) {
@@ -89,7 +93,7 @@ var Hub = {
 
                 var listener;
                 while(count-- > 0 && (listener = cbs.shift()) !== void 0)
-                    listener(e);
+                    listener(e, et, hid);
             }
         }
     }
@@ -97,18 +101,18 @@ var Hub = {
 
 requestAnimationFrame(function _(e) {
     requestAnimationFrame(_);
-    Hub.send('raf', e, hub);
+    Hub.send('raf', e, '/0', hub);
     Hub.flush(hub);
 });
 
-Hub.once('raf', function _(e) {
-    console.log('raf', e);
+Hub.once('raf', function _(e, et, hid) {
+    console.log(hid, et, e);
 }, hub);
 
 var map = (from, to, map) => (hub) => {
-    Hub.on(from, function _(e) {
+    Hub.on(from, function _(e, et, hid) {
         var r = map(e);
-        Hub.send(to, r, hub);
+        Hub.send(to, r, Hid.child(0, hid), hub);
     }, hub);
 };
 
@@ -127,14 +131,14 @@ map('raf', 'time', elapsed => {
 
 map('time', 'delta', time => time.delta)(hub);
 
-var delay = (ms) => (hub, et) => {
+var delay = (ms) => (hub, et_end) => {
     var elapsed = 0;
-    Hub.once('delta', function _(delta) {
+    Hub.once('delta', function _(delta, et, hid) {
         elapsed += delta;
         if (elapsed >= ms) {
-            Hub.send(et, null, hub);
+            Hub.send(et_end, null, Hid.child(0, hid), hub);
 
-            Hub.yield('delta', elapsed - ms, hub);
+            Hub.yield('delta', elapsed - ms, hid, hub);
         }
         else {
             Hub.once('delta', _, hub);
@@ -143,7 +147,7 @@ var delay = (ms) => (hub, et) => {
 };
 
 var fromCb = (sub) => (hub, et) => {
-    sub(e => { Hub.send(et, e, hub); });
+    sub(e => { Hub.send(et, e, '/0', hub); });
 };
 
 var windowOnload = fromCb(cb => window.onload = cb);
@@ -161,9 +165,10 @@ then(windowOnload, then(one, two))(hub, 'window1+2');
 Hub.once('window1+2', () => console.log('window 1 + 2'), hub);
 
 // hierarchy id
-var hid = {
+var Hid = {
     isParent: (hidParent, hid) => hid.startsWith(hidParent),
-    isChild: (hidChild, hid) => hidChild.startsWith(hid)
+    isChild: (hidChild, hid) => hidChild.startsWith(hid),
+    child: (index, hid) => hid + '/' + index,
 };
 
 
