@@ -56,17 +56,17 @@ var array = {
 
 var hub = {
     events: array.ofTuples(3),
-    yields: array.ofTuples(2),
-    listeners: array.ofTuples(3)
+    yields: array.ofTuples(3),
+    listeners: array.ofTuples(2)
 };
 
 var exceptEt = ['raf', 'time', 'delta'];
 var Hub = {
-    send: (type, event, hid, hub) => {
+    send: (hid, type, event, hub) => {
         if (exceptEt.indexOf(type) === -1) console.log(hid, type, event);
-        hub.events.push(type, event, hid);
+        hub.events.push(hid, type, event);
     },
-    yield: (type, event, hid, hub) => hub.yields.push(type, event, hid),
+    yield: (hid, type, event, hub) => hub.yields.push(hid, type, event),
     once: (type, cb, hub) => {
         var index;
         if ((index = hub.listeners.indexOf(type)) < 0) index = hub.listeners.push(type, []) - 1;
@@ -81,9 +81,9 @@ var Hub = {
         }, hub);
     },
     flush: (hub) => {
-        var pair;
-        while((pair = hub.events.shift()) !== void 0 || (pair = hub.yields.shift()) !== void 0 ) {
-            var [et, e, hid] = pair;
+        var event;
+        while((event = hub.events.shift()) !== void 0 || (event = hub.yields.shift()) !== void 0 ) {
+            var [_, et, _] = event;
 
             var index;
             if ((index = hub.listeners.indexOf(et)) > -1) {
@@ -91,9 +91,10 @@ var Hub = {
 
                 var count = cbs.length;
 
-                var listener;
-                while(count-- > 0 && (listener = cbs.shift()) !== void 0)
-                    listener(e, et, hid);
+                var cb;
+                while(count-- > 0 && (cb = cbs.shift()) !== void 0) {
+                    cb(event);
+                }
             }
         }
     }
@@ -101,18 +102,18 @@ var Hub = {
 
 requestAnimationFrame(function _(e) {
     requestAnimationFrame(_);
-    Hub.send('raf', e, '/0', hub);
+    Hub.send(Hid.root, 'raf', e, hub);
     Hub.flush(hub);
 });
 
-Hub.once('raf', function _(e, et, hid) {
-    console.log(hid, et, e);
+Hub.once('raf', function _(e) {
+    console.log(...e);
 }, hub);
 
-var map = (from, to, map) => (hub) => {
-    Hub.on(from, function _(e, et, hid) {
-        var r = map(e);
-        Hub.send(to, r, Hid.child(0, hid), hub);
+var map = (fromEt, toEt, mapE) => (hub) => {
+    Hub.on(fromEt, function _([hid, et, e1]) {
+        var e2 = mapE(e1);
+        Hub.send(Hid.child(hid), toEt, e2, hub);
     }, hub);
 };
 
@@ -133,12 +134,12 @@ map('time', 'delta', time => time.delta)(hub);
 
 var delay = (ms) => (hub, et_end) => {
     var elapsed = 0;
-    Hub.once('delta', function _(delta, et, hid) {
+    Hub.once('delta', function _([hid, et, delta]) {
         elapsed += delta;
         if (elapsed >= ms) {
-            Hub.send(et_end, null, Hid.child(0, hid), hub);
+            Hub.send(Hid.child(hid), et_end, null, hub);
 
-            Hub.yield('delta', elapsed - ms, hid, hub);
+            Hub.yield(hid, 'delta', elapsed - ms, hub);
         }
         else {
             Hub.once('delta', _, hub);
@@ -146,11 +147,11 @@ var delay = (ms) => (hub, et_end) => {
     }, hub);
 };
 
-var fromCb = (sub) => (hub, et) => {
-    sub(e => { Hub.send(et, e, '/0', hub); });
+var fromCb = (obj, prop) => (hub, et_end) => {
+    obj[prop] = e => Hub.send(Hid.root, et_end, e, hub);
 };
 
-var windowOnload = fromCb(cb => window.onload = cb);
+var windowOnload = fromCb(window, 'onload');
 
 var one = delay(2000);
 var two = delay(2000);
@@ -166,9 +167,27 @@ Hub.once('window1+2', () => console.log('window 1 + 2'), hub);
 
 // hierarchy id
 var Hid = {
-    isParent: (hidParent, hid) => hid.startsWith(hidParent),
-    isChild: (hidChild, hid) => hidChild.startsWith(hid),
-    child: (index, hid) => hid + '/' + index,
+    root: '/',
+    isChild: (childHid, hid) => childHid.startsWith(hid),
+    child: (hid) => hid + '0/',
+    sibling: (hid) => {
+        var [parent, index] = Hid.split(hid);
+        return parent + (index + 1) + '/';
+    },
+    split: (() => { var r = []; return (hid) => {
+        for (var i = hid.length - 2; i >= 0 && hid[i] !== '/'; i--);
+        var parent = hid.substring(0, i + 1);
+        var index = hid.substring(i + 1, hid.length - 1);
+
+        r[0] = parent;
+        r[1] = Number(index);
+        return r;
+    }})(),
+    depth: (hid) => {
+        var depth = -1;
+        for (var i = 0; i < hid.length; i++) depth += hid[i] == '/' ? 1 : 0;
+        return depth;
+    }
 };
 
 
