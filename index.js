@@ -82,7 +82,7 @@ map('time', 'delta', time => time.delta)(hub);
 
 var delays = 0;
 var delay = (ms) => (hub) => {
-    var id = 'delay' + delays++;
+    var id = 'delay:' + delays++;
 
     var elapsed = 0;
     Hub.once('delta', function callback(e) {
@@ -110,16 +110,21 @@ var windowOnload = fromCallback(window, 'onload');
 var one = delay(2000);
 var two = delay(2000);
 
+var thens = 0;
 var then = (one, two) => (hub) => {
+    var id = 'then:' + thens++;
     var typeOne = one(hub); console.log('Waiting for', typeOne);
     Hub.once(typeOne, _ => { 
-        var typeTwo = two(hub); console.log('Waiting for', typeTwo)
+        var typeTwo = two(hub); console.log('Waiting for', typeTwo);
+        Hub.once(typeTwo, _ => {
+            Hub.send(id, null, hub);
+        }, hub);
     }, hub);
-    return 'then';
+    return id;
 };
 
-then(windowOnload, then(one, two))(hub, 'window1+2');
+var t0 = then(windowOnload, then(one, two))(hub); console.log('Waiting for', t0);
 
-Hub.once('window1+2', () => console.log('window 1 + 2'), hub);
+Hub.once(t0, () => console.log('window 1 + 2'), hub);
 
 
