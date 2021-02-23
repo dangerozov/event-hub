@@ -1,0 +1,22 @@
+{
+  "name": "event-hub",
+  "version": "1.0.0",
+  "description": "Events and promises.",
+  "main": "index.js",
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^4.1.5"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dangerozov/event-hub.git"
+  },
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dangerozov/event-hub/issues"
+  },
+  "homepage": "https://github.com/dangerozov/event-hub#readme"
+}
